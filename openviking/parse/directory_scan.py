@@ -221,13 +221,19 @@ def scan_directory(
     exclude_patterns = _parse_patterns(exclude)
 
     result = DirectoryScanResult(root=root)
-
-    for dir_path_str, _, file_names in os.walk(root, topdown=True):
+    for dir_path_str, dir_names, file_names in os.walk(root, topdown=True):
         dir_path = Path(dir_path_str)
-        should_skip, reason = _should_skip_directory(dir_path, root, ignore_dirs)
-        if should_skip:
-            result.skipped.append(f"{dir_path.relative_to(root)} ({reason})")
-            continue
+
+        # Prune subdirectories in-place so os.walk won't descend into them
+        kept = []
+        for d in dir_names:
+            sub = dir_path / d
+            skip, reason = _should_skip_directory(sub, root, ignore_dirs)
+            if skip:
+                result.skipped.append(f"{sub.relative_to(root)} ({reason})")
+            else:
+                kept.append(d)
+        dir_names[:] = kept
 
         for name in file_names:
             file_path = dir_path / name
@@ -270,4 +276,8 @@ def scan_directory(
         for rel in unsupported_paths:
             result.warnings.append(f"  - {rel}")
 
+    result.processable.sort(key=lambda x: x.rel_path)
+    result.unsupported.sort(key=lambda x: x.rel_path)
+    result.skipped.sort()
+    result.warnings.sort()
     return result
