@@ -71,6 +71,54 @@ def _should_skip_file(file_path: Path) -> tuple[bool, str]:
     return False, ""
 
 
+def _should_skip_directory(
+    dir_path: Path,
+    root: Path,
+    ignore_dirs: Optional[Set[str]] = None,
+) -> tuple[bool, str]:
+    """
+    Return (True, reason) if the directory should be skipped (not counted as supported/unsupported).
+
+    Skip: dot directories, symlinks, IGNORE_DIRS, and any dir in ignore_dirs.
+    ignore_dirs: directory names, or relative paths (relative to root).
+                 - Name only (no path sep): skip any dir with that name.
+                 - Relative path (e.g. "parse/", "./storage/vectordb", "openviking/parse"): skip when dir's path matches.
+    """
+    if dir_path.name.startswith("."):
+        return True, "dot directory"
+    if dir_path.is_symlink():
+        return True, "symlink"
+    if dir_path.name in IGNORE_DIRS:
+        return True, "IGNORE_DIRS"
+    if not ignore_dirs:
+        return False, ""
+
+    try:
+        dir_rel = _normalize_rel_path(str(dir_path.relative_to(root)))
+    except ValueError:
+        dir_rel = _normalize_rel_path(str(dir_path))
+
+    for entry in ignore_dirs:
+        if not entry or not str(entry).strip():
+            continue
+        raw = str(entry).strip().replace("\\", "/")
+        if not raw:
+            continue
+
+        # Relative path (contains '/'): match by path relative to root
+        if "/" in raw:
+            prefix = raw.rstrip("/").lstrip("./")
+            if prefix and (dir_rel == prefix or dir_rel.startswith(prefix + "/")):
+                return True, "ignore_dirs"
+            continue
+
+        # Single segment: match by directory name
+        if dir_path.name == raw:
+            return True, "ignore_dirs"
+
+    return False, ""
+
+
 def _parse_patterns(value: Optional[str]) -> List[str]:
     """Parse comma-separated include/exclude string into list of stripped patterns."""
     if not value or not value.strip():
@@ -83,7 +131,7 @@ def _normalize_rel_path(rel_path: str) -> str:
     return rel_path.replace("\\", "/")
 
 
-def _matches_include(rel_path_norm: str, path_name: str, patterns: List[str]) -> bool:
+def _matches_include(path_name: str, patterns: List[str]) -> bool:
     """True if file is included: no patterns means include all; else match path name against any pattern."""
     if not patterns:
         return True
@@ -111,7 +159,6 @@ def _matches_exclude(rel_path_norm: str, path_name: str, patterns: List[str]) ->
 
 def _classify_file(
     file_path: Path,
-    rel_path: str,
     registry: ParserRegistry,
 ) -> str:
     """
@@ -152,7 +199,7 @@ def scan_directory(
         registry: Parser registry for rich_file detection. Defaults to get_registry().
         strict: If True, raise UnsupportedDirectoryFilesError when any unsupported file exists.
                 If False, append warnings and continue (unsupported list still populated).
-        ignore_dirs: Directory names to skip (default: IGNORE_DIRS).
+        ignore_dirs: Directory names or relative paths (to root) to skip. E.g. "parse", "parse/", "./storage/".
         include: Comma-separated glob patterns for file names; only matching files are included
                  (e.g. "*.pdf,*.md"). If not set, all files (subject to exclude) are considered.
         exclude: Comma-separated patterns: trailing '/' = path prefix (e.g. "drafts/"),
@@ -172,17 +219,18 @@ def scan_directory(
     if not root.is_dir():
         raise NotADirectoryError(f"Not a directory: {root}")
 
-    effective_ignore_dirs = ignore_dirs if ignore_dirs is not None else IGNORE_DIRS
     effective_registry = registry if registry is not None else get_registry()
     include_patterns = _parse_patterns(include)
     exclude_patterns = _parse_patterns(exclude)
 
     result = DirectoryScanResult(root=root)
 
-    for dir_path_str, dir_names, file_names in os.walk(root, topdown=True):
-        # Prune ignored directories (do not descend)
-        dir_names[:] = [d for d in dir_names if d not in effective_ignore_dirs]
+    for dir_path_str, _, file_names in os.walk(root, topdown=True):
         dir_path = Path(dir_path_str)
+        should_skip, reason = _should_skip_directory(dir_path, root, ignore_dirs)
+        if should_skip:
+            result.skipped.append(f"{dir_path.relative_to(root)} ({reason})")
+            continue
 
         for name in file_names:
             file_path = dir_path / name
@@ -197,14 +245,14 @@ def scan_directory(
                 result.skipped.append(f"{rel_path} ({reason})")
                 continue
 
-            if include_patterns and not _matches_include(rel_path_norm, name, include_patterns):
+            if include_patterns and not _matches_include(name, include_patterns):
                 result.skipped.append(f"{rel_path} (excluded by include filter)")
                 continue
             if exclude_patterns and _matches_exclude(rel_path_norm, name, exclude_patterns):
                 result.skipped.append(f"{rel_path} (excluded by exclude filter)")
                 continue
 
-            classification = _classify_file(file_path, rel_path, effective_registry)
+            classification = _classify_file(file_path, effective_registry)
             classified = ClassifiedFile(
                 path=file_path, rel_path=rel_path, classification=classification
             )

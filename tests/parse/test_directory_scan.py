@@ -201,15 +201,50 @@ class TestScanDirectoryEdgeCases:
             scan_directory(tmp_tree / "readme.md", registry=registry)
 
     def test_custom_ignore_dirs(self, tmp_tree: Path, registry: ParserRegistry) -> None:
-        # Ignore "src" as well
-        result: DirectoryScanResult = scan_directory(
+        """Custom ignore_dirs supports directory names and relative paths."""
+
+        # 1) Ignore by directory name ("src")
+        result_name: DirectoryScanResult = scan_directory(
             tmp_tree,
             registry=registry,
             strict=False,
             ignore_dirs={".git", "node_modules", "src"},
         )
-        all_rel = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
-        assert not any(p.startswith("src/") for p in all_rel)
+        all_rel_name = [
+            f.rel_path
+            for f in result_name.rich_files + result_name.text_files + result_name.unsupported
+        ]
+        assert not any(p.startswith("src/") for p in all_rel_name)
+
+        # 2) Ignore by relative path with trailing slash ("src/")
+        result_rel_slash: DirectoryScanResult = scan_directory(
+            tmp_tree,
+            registry=registry,
+            strict=False,
+            ignore_dirs=["src/"],
+        )
+        all_rel_slash = [
+            f.rel_path
+            for f in result_rel_slash.rich_files
+            + result_rel_slash.text_files
+            + result_rel_slash.unsupported
+        ]
+        assert not any(p.startswith("src/") for p in all_rel_slash)
+
+        # 3) Ignore by relative path with ./ prefix ("./src")
+        result_rel_dot: DirectoryScanResult = scan_directory(
+            tmp_tree,
+            registry=registry,
+            strict=False,
+            ignore_dirs=["./src"],
+        )
+        all_rel_dot = [
+            f.rel_path
+            for f in result_rel_dot.rich_files
+            + result_rel_dot.text_files
+            + result_rel_dot.unsupported
+        ]
+        assert not any(p.startswith("src/") for p in all_rel_dot)
 
     def test_result_all_processable(
         self, tmp_all_supported: Path, registry: ParserRegistry
