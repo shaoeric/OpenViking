@@ -6,8 +6,7 @@ from openviking.parse.base import NodeType, ParseResult, ResourceNode, create_pa
 from openviking.parse.converter import DocumentConverter
 from openviking.parse.custom import CallbackParserWrapper, CustomParserProtocol, CustomParserWrapper
 from openviking.parse.directory_scan import (
-    CLASS_RICH,
-    CLASS_TEXT,
+    CLASS_PROCESSABLE,
     CLASS_UNSUPPORTED,
     ClassifiedFile,
     DirectoryScanResult,
@@ -51,8 +50,7 @@ __all__ = [
     # VLM
     "VLMProcessor",
     # Directory scan (phase-one validation)
-    "CLASS_RICH",
-    "CLASS_TEXT",
+    "CLASS_PROCESSABLE",
     "CLASS_UNSUPPORTED",
     "ClassifiedFile",
     "DirectoryScanResult",

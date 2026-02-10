@@ -8,8 +8,7 @@ import pytest
 
 from openviking.exceptions import UnsupportedDirectoryFilesError
 from openviking.parse.directory_scan import (
-    CLASS_RICH,
-    CLASS_TEXT,
+    CLASS_PROCESSABLE,
     ClassifiedFile,
     DirectoryScanResult,
     scan_directory,
@@ -102,28 +101,32 @@ class TestScanDirectoryTraversal:
 
     def test_skips_dot_files_and_empty(self, tmp_tree: Path, registry: ParserRegistry) -> None:
         result: DirectoryScanResult = scan_directory(tmp_tree, registry=registry, strict=False)
-        all_rel = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
+        all_rel = [f.rel_path for f in result.processable + result.unsupported]
         assert ".hidden" not in all_rel
         assert "empty.txt" not in all_rel
         assert any("empty" in s or "dot" in s for s in result.skipped)
 
 
 class TestScanDirectoryClassification:
-    """Test rich_file / text_file / unsupported classification."""
+    """Test processable / unsupported classification."""
 
-    def test_rich_files_have_parser(self, tmp_tree: Path, registry: ParserRegistry) -> None:
+    def test_processable_includes_parser_files(
+        self, tmp_tree: Path, registry: ParserRegistry
+    ) -> None:
         result: DirectoryScanResult = scan_directory(tmp_tree, registry=registry, strict=False)
-        rich_rel = [f.rel_path for f in result.rich_files]
-        assert "readme.md" in rich_rel
-        assert "doc.html" in rich_rel
-        assert "note.txt" in rich_rel
+        processable_rel = [f.rel_path for f in result.processable]
+        assert "readme.md" in processable_rel
+        assert "doc.html" in processable_rel
+        assert "note.txt" in processable_rel
 
-    def test_text_files_code_or_config(self, tmp_tree: Path, registry: ParserRegistry) -> None:
+    def test_processable_includes_code_or_config(
+        self, tmp_tree: Path, registry: ParserRegistry
+    ) -> None:
         result: DirectoryScanResult = scan_directory(tmp_tree, registry=registry, strict=False)
-        text_rel = [f.rel_path for f in result.text_files]
-        assert "main.py" in text_rel
-        assert "config.yaml" in text_rel
-        assert "src/app.py" in text_rel
+        processable_rel = [f.rel_path for f in result.processable]
+        assert "main.py" in processable_rel
+        assert "config.yaml" in processable_rel
+        assert "src/app.py" in processable_rel
 
     def test_unsupported_unknown_ext(self, tmp_tree: Path, registry: ParserRegistry) -> None:
         result: DirectoryScanResult = scan_directory(tmp_tree, registry=registry, strict=False)
@@ -210,10 +213,7 @@ class TestScanDirectoryEdgeCases:
             strict=False,
             ignore_dirs={".git", "node_modules", "src"},
         )
-        all_rel_name = [
-            f.rel_path
-            for f in result_name.rich_files + result_name.text_files + result_name.unsupported
-        ]
+        all_rel_name = [f.rel_path for f in result_name.processable + result_name.unsupported]
         assert not any(p.startswith("src/") for p in all_rel_name)
 
         # 2) Ignore by relative path with trailing slash ("src/")
@@ -224,10 +224,7 @@ class TestScanDirectoryEdgeCases:
             ignore_dirs=["src/"],
         )
         all_rel_slash = [
-            f.rel_path
-            for f in result_rel_slash.rich_files
-            + result_rel_slash.text_files
-            + result_rel_slash.unsupported
+            f.rel_path for f in result_rel_slash.processable + result_rel_slash.unsupported
         ]
         assert not any(p.startswith("src/") for p in all_rel_slash)
 
@@ -238,12 +235,7 @@ class TestScanDirectoryEdgeCases:
             strict=False,
             ignore_dirs=["./src"],
         )
-        all_rel_dot = [
-            f.rel_path
-            for f in result_rel_dot.rich_files
-            + result_rel_dot.text_files
-            + result_rel_dot.unsupported
-        ]
+        all_rel_dot = [f.rel_path for f in result_rel_dot.processable + result_rel_dot.unsupported]
         assert not any(p.startswith("src/") for p in all_rel_dot)
 
     def test_result_all_processable(
@@ -253,9 +245,9 @@ class TestScanDirectoryEdgeCases:
             tmp_all_supported, registry=registry, strict=True
         )
         all_p = result.all_processable_files()
-        assert len(all_p) == len(result.rich_files) + len(result.text_files)
+        assert len(all_p) == len(result.processable)
         for cf in all_p:
-            assert cf.classification in (CLASS_RICH, CLASS_TEXT)
+            assert cf.classification == CLASS_PROCESSABLE
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +267,7 @@ class TestIncludeExclude:
             strict=False,
             include="*.pdf,*.md",
         )
-        rel_paths = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
+        rel_paths = [f.rel_path for f in result.processable + result.unsupported]
         assert "readme.md" in rel_paths
         assert "doc.pdf" in rel_paths
         assert "drafts/draft.pdf" in rel_paths
@@ -292,7 +284,7 @@ class TestIncludeExclude:
             strict=False,
             exclude="drafts/",
         )
-        rel_paths = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
+        rel_paths = [f.rel_path for f in result.processable + result.unsupported]
         assert "readme.md" in rel_paths
         assert "doc.pdf" in rel_paths
         assert "main.py" in rel_paths
@@ -312,7 +304,7 @@ class TestIncludeExclude:
             include="*.pdf,*.md",
             exclude="drafts/",
         )
-        rel_paths = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
+        rel_paths = [f.rel_path for f in result.processable + result.unsupported]
         assert "readme.md" in rel_paths
         assert "doc.pdf" in rel_paths
         assert "drafts/draft.pdf" not in rel_paths
@@ -337,7 +329,7 @@ class TestIncludeExclude:
         result: DirectoryScanResult = scan_directory(
             tmp_with_drafts, registry=registry, strict=False
         )
-        rel_paths = [f.rel_path for f in result.rich_files + result.text_files + result.unsupported]
+        rel_paths = [f.rel_path for f in result.processable + result.unsupported]
         assert "readme.md" in rel_paths
         assert "doc.pdf" in rel_paths
         assert "main.py" in rel_paths
@@ -350,9 +342,36 @@ class TestIncludeExclude:
     ) -> None:
         r1 = scan_directory(tmp_tree, registry=registry, strict=False)
         r2 = scan_directory(tmp_tree, registry=registry, strict=False, include="", exclude="")
-        paths1 = {f.rel_path for f in r1.rich_files + r1.text_files + r1.unsupported}
-        paths2 = {f.rel_path for f in r2.rich_files + r2.text_files + r2.unsupported}
+        paths1 = {f.rel_path for f in r1.processable + r1.unsupported}
+        paths2 = {f.rel_path for f in r2.processable + r2.unsupported}
         assert paths1 == paths2
+
+    def test_ignore_dirs_with_include_and_exclude(
+        self, tmp_with_drafts: Path, registry: ParserRegistry
+    ) -> None:
+        """Combined ignore_dirs + include + exclude should work together."""
+
+        result: DirectoryScanResult = scan_directory(
+            tmp_with_drafts,
+            registry=registry,
+            strict=False,
+            ignore_dirs={"drafts"},
+            include="*.md,*.py",
+            exclude="main.py",
+        )
+
+        rel_paths = [f.rel_path for f in result.processable + result.unsupported]
+
+        # ignore_dirs: drafts/ 整个目录被跳过
+        assert not any(p.startswith("drafts/") for p in rel_paths)
+        # include: .md 仍然被保留
+        assert "readme.md" in rel_paths
+        # exclude: main.py 被排除
+        assert "main.py" not in rel_paths
+
+        skipped_reasons = " ".join(result.skipped)
+        assert "ignore_dirs" in skipped_reasons
+        assert "excluded by include" in skipped_reasons or "excluded by exclude" in skipped_reasons
 
 
 class TestClassifiedFileAndResult:
@@ -360,9 +379,9 @@ class TestClassifiedFileAndResult:
 
     def test_classified_file_has_rel_path_and_classification(self) -> None:
         p = Path("/tmp/foo/bar.txt")
-        cf = ClassifiedFile(path=p, rel_path="bar.txt", classification=CLASS_RICH)
+        cf = ClassifiedFile(path=p, rel_path="bar.txt", classification=CLASS_PROCESSABLE)
         assert cf.rel_path == "bar.txt"
-        assert cf.classification == CLASS_RICH
+        assert cf.classification == CLASS_PROCESSABLE
 
     def test_scan_result_root_and_lists(
         self, tmp_all_supported: Path, registry: ParserRegistry
@@ -371,8 +390,7 @@ class TestClassifiedFileAndResult:
             tmp_all_supported, registry=registry, strict=True
         )
         assert result.root == tmp_all_supported.resolve()
-        assert isinstance(result.rich_files, list)
-        assert isinstance(result.text_files, list)
+        assert isinstance(result.processable, list)
         assert isinstance(result.unsupported, list)
         assert isinstance(result.warnings, list)
         assert isinstance(result.skipped, list)

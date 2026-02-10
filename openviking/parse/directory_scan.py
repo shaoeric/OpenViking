@@ -4,7 +4,7 @@
 Directory pre-scan validation module for OpenViking.
 
 Implements phase-one of directory import (RFC #83): traverse directory tree,
-classify files as rich_file / text_file / unsupported, validate format,
+classify files as processable / unsupported, validate format,
 and report errors or warnings with optional strict mode.
 """
 
@@ -23,8 +23,7 @@ from openviking.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # File classification labels
-CLASS_RICH = "rich_file"
-CLASS_TEXT = "text_file"
+CLASS_PROCESSABLE = "processable"
 CLASS_UNSUPPORTED = "unsupported"
 
 
@@ -34,7 +33,7 @@ class ClassifiedFile:
 
     path: Path
     rel_path: str
-    classification: str  # CLASS_RICH | CLASS_TEXT | CLASS_UNSUPPORTED
+    classification: str  # CLASS_PROCESSABLE | CLASS_UNSUPPORTED
 
 
 @dataclass
@@ -42,15 +41,14 @@ class DirectoryScanResult:
     """Result of directory pre-scan: classified files and optional warnings."""
 
     root: Path
-    rich_files: List[ClassifiedFile] = field(default_factory=list)
-    text_files: List[ClassifiedFile] = field(default_factory=list)
+    processable: List[ClassifiedFile] = field(default_factory=list)
     unsupported: List[ClassifiedFile] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)  # reason -> count or paths for debugging
     warnings: List[str] = field(default_factory=list)
 
     def all_processable_files(self) -> List[ClassifiedFile]:
-        """Return rich_files + text_files in order (for phase-two routing)."""
-        return self.rich_files + self.text_files
+        """Return processable files in order (for phase-two routing)."""
+        return self.processable
 
 
 def _should_skip_file(file_path: Path) -> tuple[bool, str]:
@@ -162,14 +160,14 @@ def _classify_file(
     registry: ParserRegistry,
 ) -> str:
     """
-    Classify a single file as CLASS_RICH, CLASS_TEXT, or CLASS_UNSUPPORTED.
+    Classify a single file as CLASS_PROCESSABLE or CLASS_UNSUPPORTED.
 
-    Order: ParserRegistry has parser -> rich; else is_text_file -> text; else unsupported.
+    Processable: ParserRegistry has a parser, or is_text_file (code/config/docs).
     """
     if registry.get_parser_for_file(file_path) is not None:
-        return CLASS_RICH
+        return CLASS_PROCESSABLE
     if is_text_file(file_path):
-        return CLASS_TEXT
+        return CLASS_PROCESSABLE
     return CLASS_UNSUPPORTED
 
 
@@ -190,13 +188,12 @@ def scan_directory(
       (e.g. include="*.pdf,*.md"). If exclude is set, files matching any exclude pattern are
       skipped (e.g. exclude="drafts/" for path prefix, or "*.tmp" for name glob).
     - Classifies remaining files:
-      - rich_file: ParserRegistry has a parser for the extension
-      - text_file: extension in CODE_EXTENSIONS / DOCUMENTATION_EXTENSIONS / ADDITIONAL_TEXT_EXTENSIONS
+      - processable: ParserRegistry has a parser, or is_text_file (code/docs/config)
       - unsupported: everything else
 
     Args:
         root: Directory path to scan.
-        registry: Parser registry for rich_file detection. Defaults to get_registry().
+        registry: Parser registry for processable detection. Defaults to get_registry().
         strict: If True, raise UnsupportedDirectoryFilesError when any unsupported file exists.
                 If False, append warnings and continue (unsupported list still populated).
         ignore_dirs: Directory names or relative paths (to root) to skip. E.g. "parse", "parse/", "./storage/".
@@ -206,7 +203,7 @@ def scan_directory(
                  else glob on file name (e.g. "*.tmp").
 
     Returns:
-        DirectoryScanResult with rich_files, text_files, unsupported, warnings.
+        DirectoryScanResult with processable, unsupported, warnings.
 
     Raises:
         UnsupportedDirectoryFilesError: When strict=True and there is at least one unsupported file.
@@ -256,10 +253,8 @@ def scan_directory(
             classified = ClassifiedFile(
                 path=file_path, rel_path=rel_path, classification=classification
             )
-            if classification == CLASS_RICH:
-                result.rich_files.append(classified)
-            elif classification == CLASS_TEXT:
-                result.text_files.append(classified)
+            if classification == CLASS_PROCESSABLE:
+                result.processable.append(classified)
             else:
                 result.unsupported.append(classified)
 
