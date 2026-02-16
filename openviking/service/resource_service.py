@@ -6,7 +6,7 @@ Resource Service for OpenViking.
 Provides resource management operations: add_resource, add_skill, wait_processed.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from openviking.storage import VikingDBManager
 from openviking.storage.queuefs import get_queue_manager

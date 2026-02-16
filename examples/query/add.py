@@ -9,11 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-import openviking as ov
-from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
 from rich import box
 from rich.console import Console
 from rich.table import Table
+
+import openviking as ov
+from openviking_cli.utils.config.open_viking_config import OpenVikingConfig
 
 console = Console()
 
